@@ -2,7 +2,7 @@ NAME = PmergeMe
 
 CC = c++
 
-CFLAGS = -Wall -Wextra -Werror -std=c++11 -march=native -mavx2 -mprefer-vector-width=256 -flto -funroll-loops
+CFLAGS = -Wall -Wextra -Werror -march=native -mavx2 -mprefer-vector-width=256 -flto -funroll-loops
 
 SRC = main.cpp \
 	  Jacobsthal.cpp \

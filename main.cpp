@@ -1,6 +1,5 @@
 #include "PmergeMe.hpp"
-
-#include "PmergeMe.hpp"
+#include <chrono>
 
 int main(int argc, char* argv[]) 
 {
@@ -41,32 +40,29 @@ int main(int argc, char* argv[])
         n--;
     }
 
-    std::vector<std::pair<int, int> > pairs;
+    std::vector<std::pair<int, int>> pairs;
     pairs.reserve(n / 2);
     for (int i = 0; i < n; i += 2)
         pairs.push_back(std::make_pair(data[i], data[i + 1]));
 
-    std::deque<std::pair<int, int> > deque_pairs;
+    std::deque<std::pair<int, int>> deque_pairs;
     for (int i = 0; i < n; i += 2)
         deque_pairs.push_back(std::make_pair(data2[i], data2[i + 1]));
 
-
-    std::clock_t start = std::clock();
+    // Remplacement de clock() par chrono
+    auto start = std::chrono::high_resolution_clock::now();
     std::vector<int> sorted_data = ford_johnson_sort(pairs, straggler, has_straggler);
-    std::clock_t end = std::clock();
-    double time1 = (double)(end - start) * 1000000.0 / CLOCKS_PER_SEC;  
+    auto end = std::chrono::high_resolution_clock::now();
 
-    /* start = std::clock(); */
-    /* std::deque<int> sorted_deque = ford_johnson_sort_deque(deque_pairs, straggler, has_straggler); */
-    /* end = std::clock(); */
-    /* double time2 = (double)(end - start) * 1000000.0 / CLOCKS_PER_SEC;  */
-
-
+    double time1 = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+	std::cout << "Sorted numbers: ";
+    for (int num : sorted_data) {
+        std::cout << num << " ";
+    }
+    std::cout << std::endl;
     check_if_sorted(sorted_data);
-    /* check_if_sorted_deque(sorted_deque); */
 
-    std::cout << "Time for first sort (vector): " << time1 << " us" << std::endl;
-    /* std::cout << "Time for second sort (deque): " << time2 << " us" << std::endl; */
+    std::cout << "Time for first sort (vector): " << time1 << " µs" << std::endl;
 
     return 0;
 }

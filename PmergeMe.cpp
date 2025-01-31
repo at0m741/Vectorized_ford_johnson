@@ -1,43 +1,24 @@
 #include "PmergeMe.hpp"
 #include <xmmintrin.h>
 
+int comparison_count = 0;
+thread_local std::vector<std::pair<int, int>> tls_left_buffer, tls_right_buffer;
 
-__attribute__((always_inline, hot))
-static inline void copy_pairs(const std::vector<std::pair<int, int> >& pairs,
-                              std::vector<std::pair<int, int> >& leftArray,
-                              std::vector<std::pair<int, int> >& rightArray,
-                              int left, int middle, int n1, int n2) {
-    int i = 0;
-    for (; i + 3 < n1; i += 4) {
-        __m256i data = load_256(&pairs[left + i]);
-        store_256(&leftArray[i], data);
-    }
-    for (; i < n1; ++i) {
-        leftArray[i] = pairs[left + i];
-    }
-
-    int j = 0;
-    for (; j + 3 < n2; j += 4) {
-        __m256i data = load_256(&pairs[middle + 1 + j]);
-        store_256(&rightArray[j], data);
-    }
-    for (; j < n2; ++j) {
-        rightArray[j] = pairs[middle + 1 + j];
-    }
-}
 
 __attribute__((always_inline, hot))
 static inline void merge_pairs(std::vector<std::pair<int, int> >& pairs, int left, int middle, int right) {
     int n1 = middle - left + 1;
     int n2 = right - middle;
-
+    int i = 0, j = 0, k = left;
     std::vector<std::pair<int, int> > leftArray(n1);
     std::vector<std::pair<int, int> > rightArray(n2);
 	leftArray.resize(n1);
 	rightArray.resize(n2);
 
-    copy_pairs(pairs, leftArray, rightArray, left, middle, n1, n2);
-    int i = 0, j = 0, k = left;
+	if (n1 > 0) 
+		__builtin_memcpy(leftArray.data(), &pairs[left], n1 * sizeof(std::pair<int, int>));
+	if (n2 > 0)
+		__builtin_memcpy(rightArray.data(), &pairs[middle + 1], n2 * sizeof(std::pair<int, int>));
 	
 	while (i + 3 < n1 && j + 3 < n2) {
 		merge4_unrolled(pairs, leftArray, rightArray, i, j, k, ComparePairs());
@@ -51,23 +32,21 @@ static inline void merge_pairs(std::vector<std::pair<int, int> >& pairs, int lef
 		++k;
 	}
 
-	while (i + 3 < n1) {
-		_mm_prefetch(&leftArray[i + 4], _MM_HINT_NTA);
-		pairs[k++] = leftArray[i++];
-		pairs[k++] = leftArray[i++];
-		pairs[k++] = leftArray[i++];
-		pairs[k++] = leftArray[i++];
+	while (i + 7 < n1) {  
+		_mm_prefetch(reinterpret_cast<const char*>(&leftArray[i + 8]), _MM_HINT_NTA);
+		_mm_prefetch(reinterpret_cast<const char*>(&rightArray[j + 8]), _MM_HINT_NTA);
+
+		__m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&rightArray[j]));
+		__m256i data2 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&leftArray[i]));
+		_mm256_storeu_si256(reinterpret_cast<__m256i*>(&pairs[k]), data);
+		_mm256_storeu_si256(reinterpret_cast<__m256i*>(&pairs[k]), data2);
+
+		i += 8;
+		k += 8;
 	}
 
 	while (i < n1) 
 		pairs[k++] = leftArray[i++];
-
-	while (j + 3 < n2) {
-		pairs[k++] = rightArray[j++];
-		pairs[k++] = rightArray[j++];
-		pairs[k++] = rightArray[j++];
-		pairs[k++] = rightArray[j++];
-	}
 
 	while (j < n2) 
 		pairs[k++] = rightArray[j++];
@@ -107,7 +86,7 @@ std::vector<int> ford_johnson_sort(std::vector<std::pair<int, int> >& pairs, int
 
     std::vector<uint64_t> jacobsthal_sequence = generate_jacobsthal_AVX(pend.size());
     std::vector<bool> inserted(pend.size(), false);
-
+	#pragma omp parallel for
     for (size_t i = 0; i < jacobsthal_sequence.size(); ++i){
         size_t idx = jacobsthal_sequence[i];
         if (idx < pend.size() && !inserted[idx]) {
@@ -125,6 +104,6 @@ std::vector<int> ford_johnson_sort(std::vector<std::pair<int, int> >& pairs, int
             inserted[i] = true;
         }
     }
-
+	std::cout << "comparison_count: " << comparison_count << std::endl;
     return S;
 }

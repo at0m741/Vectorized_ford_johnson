@@ -14,6 +14,24 @@
 
 #define align	__attribute__((aligned(32)))
 #define SYM		0x0000000065657266
+
+struct alignas(32) PairArray {
+    int* keys;    // Correspond à `pairs.first`
+    int* values;  // Correspond à `pairs.second`
+    size_t size;
+
+    PairArray(size_t n) : size(n) {
+        keys = static_cast<int*>(aligned_alloc(32, n * sizeof(int)));
+        values = static_cast<int*>(aligned_alloc(32, n * sizeof(int)));
+    }
+
+    ~PairArray() {
+        free(keys);
+        free(values);
+    }
+};
+
+
 align static const uint64_t jacobsthal_table[] = {
     0, 1, 1, 3, 5, 11, 21, 43, 85, 171, 341, 683, 1365, 2731,
     5461, 10923, 21845, 43691, 87381, 174763, 349525, 699051,
