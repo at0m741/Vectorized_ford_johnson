@@ -1,4 +1,7 @@
 # Maybe_a_vectorized_ford_johnson
+
+this is a on optimized Ford-Johnson sort algorithm using AVX2 intrinsics and latency friendly
+
 ```bash
 make
 ```
