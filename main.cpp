@@ -49,7 +49,6 @@ int main(int argc, char* argv[])
     for (int i = 0; i < n; i += 2)
         deque_pairs.push_back(std::make_pair(data2[i], data2[i + 1]));
 
-    // Remplacement de clock() par chrono
     auto start = std::chrono::high_resolution_clock::now();
     std::vector<int> sorted_data = ford_johnson_sort(pairs, straggler, has_straggler);
     auto end = std::chrono::high_resolution_clock::now();
