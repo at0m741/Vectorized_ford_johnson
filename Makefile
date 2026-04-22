@@ -1,46 +1,64 @@
-NAME = PmergeMe
+NAME_BASE = PmergeMe
+NAME = $(NAME_BASE)-$(MODE)
 
-CC = c++
+CXX = c++
+CXXFLAGS = -std=c++17 -Wall -Wextra -Werror -flto -funroll-loops
+MODE ?= fast
 
-CFLAGS = -Wall -Wextra -Werror -march=native -mavx2 -mprefer-vector-width=256 -flto -funroll-loops
+UNAME_M := $(shell uname -m)
+
+ifeq ($(UNAME_M),x86_64)
+	CXXFLAGS += -march=native -mavx2 -mprefer-vector-width=256
+endif
+
+ifeq ($(MODE),fast)
+	CXXFLAGS += -DPMERGEME_MODE_FAST
+else ifeq ($(MODE),mincmp)
+	CXXFLAGS += -DPMERGEME_MODE_MINCMP
+else
+$(error Unsupported MODE=$(MODE). Use MODE=fast or MODE=mincmp)
+endif
 
 SRC = main.cpp \
 	  Jacobsthal.cpp \
 	  PmergeMe.cpp \
-	  utils.cpp	\
+	  utils.cpp \
 	  compare.cpp \
-	  compare2.cpp \
-	  PmergeMe2.cpp \
-	  Jacobsthal2.cpp \
+	  PmergeMe2.cpp
 
-OBJ_DIR = obj
+OBJ_DIR = obj/$(MODE)
 OBJ = $(addprefix $(OBJ_DIR)/, $(SRC:.cpp=.o))
 
-ifeq ($(DEBUG), true)
-	CFLAGS += -g -D DEBUG
+ifeq ($(DEBUG),true)
+	CXXFLAGS += -g -DDEBUG
 endif
 
-ifeq ($(AVX512), 1)
-	CFLAGS += -mavx512f -mavx512dq -mavx512cd -mavx512bw -mavx512vl
+ifeq ($(AVX512),1)
+ifeq ($(UNAME_M),x86_64)
+	CXXFLAGS += -mavx512f -mavx512dq -mavx512cd -mavx512bw -mavx512vl
+endif
 endif
 
-all: $(NAME)
+all: $(NAME_BASE)
 
-opti: CFLAGS += -O3 -mtune=native
+opti: CXXFLAGS += -O3
 opti: re
 
 $(NAME): $(OBJ)
-	$(CC) $(CFLAGS) $(OBJ) -o $(NAME)
+	$(CXX) $(CXXFLAGS) $(OBJ) -o $(NAME)
+
+$(NAME_BASE): $(NAME)
+	cp $(NAME) $(NAME_BASE)
 
 $(OBJ_DIR)/%.o: %.cpp
 	@mkdir -p $(OBJ_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 clean:
-	rm -rf $(OBJ_DIR)
+	rm -rf obj
 
 fclean: clean
-	rm -f $(NAME)
+	rm -f $(NAME_BASE) $(NAME_BASE)-fast $(NAME_BASE)-mincmp
 
 re: fclean all
 

@@ -1,70 +1,89 @@
 #include "PmergeMe.hpp"
-#include <cstring>
 
+extern uint64_t comparison_count;
 
-extern int comparison_count;
-void compare_pairs_avx(std::vector<std::pair<int, int> >& pairs) {
-	size_t n = pairs.size();
-	size_t block_size = 256 / sizeof(std::pair<int, int>);
-
-	for (size_t block_start = 0; block_start < n; block_start += block_size) {
-		size_t block_end = std::min(block_start + block_size, n);
-		size_t i = block_start;
-
-		for (; i + 8 <= block_end; i += 8) {
-			__m256i first = _mm256_set_epi32(
-					pairs[i + 7].first, pairs[i + 6].first, pairs[i + 5].first, pairs[i + 4].first,
-					pairs[i + 3].first, pairs[i + 2].first, pairs[i + 1].first, pairs[i + 0].first);
-			__m256i second = _mm256_set_epi32(
-					pairs[i + 7].second, pairs[i + 6].second, pairs[i + 5].second, pairs[i + 4].second,
-					pairs[i + 3].second, pairs[i + 2].second, pairs[i + 1].second, pairs[i + 0].second);
-
-			__m256i min_values = _mm256_min_epi32(first, second);
-			__m256i max_values = _mm256_max_epi32(first, second);
-			comparison_count += 8;
-			int results_min[8], results_max[8];
-			_mm256_storeu_si256((__m256i*)results_min, min_values);
-			_mm256_storeu_si256((__m256i*)results_max, max_values);
-
-			for (int j = 0; j < 8; ++j) {
-				pairs[i + j].first = results_min[j];
-				pairs[i + j].second = results_max[j];
-			}
-		}
-
-		for (; i < block_end; ++i) {
-			comparison_count++;
-			int min_value = std::min(pairs[i].first, pairs[i].second);
-            int max_value = std::max(pairs[i].first, pairs[i].second);
-            pairs[i].first = min_value;
-            pairs[i].second = max_value;
-        }
-    }
+static inline void normalize_pair_scalar(int first, int second, int& lower, int& upper) {
+    lower = std::min(first, second);
+    upper = std::max(first, second);
 }
 
+PairSoA build_pair_soa(const std::vector<int>& values) {
+    const size_t pair_count = values.size() / 2;
+    PairSoA pairs(pair_count);
+    size_t pair_index = 0;
+    size_t value_index = 0;
 
+#if PMERGEME_SIMD_NEON
+    for (; value_index + 8 <= values.size(); value_index += 8, pair_index += 4) {
+        const int32x4x2_t interleaved = vld2q_s32(values.data() + value_index);
+        const int32x4_t lower = vminq_s32(interleaved.val[0], interleaved.val[1]);
+        const int32x4_t upper = vmaxq_s32(interleaved.val[0], interleaved.val[1]);
 
-__attribute__((always_inline, hot))
-void insertion(std::vector<int>& arr, int value) {
-    arr.resize(arr.size() + 1); 
+        vst1q_s32(pairs.lower.data() + pair_index, lower);
+        vst1q_s32(pairs.upper.data() + pair_index, upper);
+        comparison_count += 4;
+    }
+#endif
 
-    __m256i v_val = _mm256_set1_epi32(value);
-    size_t pos = arr.size() - 1; 
-	__builtin_prefetch(&arr[0], 0, 3); 
-    for(size_t i = 0; i + 8 <= arr.size() - 1; i += 8) {
-        __m256i data = _mm256_loadu_si256((__m256i*)&arr[i]);
-        __m256i cmp = _mm256_cmpgt_epi32(data, v_val);
-        int mask = _mm256_movemask_epi8(cmp);
-        if(mask) {
-            pos = i + (_tzcnt_u32(mask) >> 2);
-            break;
+    for (; pair_index < pair_count; ++pair_index, value_index += 2) {
+        normalize_pair_scalar(values[value_index], values[value_index + 1], pairs.lower[pair_index], pairs.upper[pair_index]);
+        ++comparison_count;
+    }
+
+    return pairs;
+}
+
+PairSoA build_pair_soa(const std::deque<int>& values) {
+    const size_t pair_count = values.size() / 2;
+    PairSoA pairs(pair_count);
+
+    for (size_t pair_index = 0, value_index = 0; pair_index < pair_count; ++pair_index, value_index += 2) {
+        normalize_pair_scalar(values[value_index], values[value_index + 1], pairs.lower[pair_index], pairs.upper[pair_index]);
+        ++comparison_count;
+    }
+
+    return pairs;
+}
+
+size_t find_insertion_position(const std::vector<int>& arr, size_t size, int value) {
+    size_t i = 0;
+
+#if PMERGEME_SIMD_AVX2
+    const __m256i vector_value = _mm256_set1_epi32(value);
+
+    for (; i + 8 <= size; i += 8) {
+        const __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(arr.data() + i));
+        const __m256i gt = _mm256_cmpgt_epi32(data, vector_value);
+        const __m256i eq = _mm256_cmpeq_epi32(data, vector_value);
+        const __m256i ge = _mm256_or_si256(gt, eq);
+        const int mask = _mm256_movemask_ps(_mm256_castsi256_ps(ge));
+
+        comparison_count += 8;
+        if (mask != 0)
+            return i + static_cast<size_t>(__builtin_ctz(static_cast<unsigned int>(mask)));
+    }
+#elif PMERGEME_SIMD_NEON
+    const int32x4_t vector_value = vdupq_n_s32(value);
+
+    for (; i + 4 <= size; i += 4) {
+        const int32x4_t data = vld1q_s32(arr.data() + i);
+        const uint32x4_t ge = vcgeq_s32(data, vector_value);
+        uint32_t lanes[4];
+
+        vst1q_u32(lanes, ge);
+        comparison_count += 4;
+        for (size_t lane = 0; lane < 4; ++lane) {
+            if (lanes[lane] != 0)
+                return i + lane;
         }
     }
+#endif
 
-    const size_t move_size = arr.size() - 1 - pos;
-    if(move_size > 0) {
-		_mm_prefetch(&arr[pos], _MM_HINT_T0);
-        __builtin_memmove(&arr[pos + 1], &arr[pos], move_size * sizeof(int));
+    for (; i < size; ++i) {
+        ++comparison_count;
+        if (arr[i] >= value)
+            return i;
     }
-    arr[pos] = value;
+
+    return size;
 }

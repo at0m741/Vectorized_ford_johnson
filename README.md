@@ -1,12 +1,20 @@
 # Maybe_a_vectorized_ford_johnson
 
-this is a on optimized Ford-Johnson sort algorithm using AVX2 intrinsics and latency friendly
+This project now uses a structure-of-arrays pipeline for pair normalization and pair ordering:
+
+- AVX2 on `x86_64`
+- NEON on `arm64`
+- scalar fallback when SIMD is unavailable
+
+The vector path on Apple Silicon builds the pair blocks directly from the raw input with a NEON deinterleave step, then applies partner-bounded Jacobsthal insertions on the main chain.
 
 ```bash
-make opti
+make MODE=fast opti
+make MODE=mincmp opti
 ```
 
-# example :
+# Example
 ```bash
-./PmergeMe `shuf -i 1-3000 -n 3000 | tr "\n" " "` 
+./PmergeMe-fast $(jot -r 3000 1 3000)
+./PmergeMe-mincmp --stats $(jot -r 3000 1 3000)
 ```

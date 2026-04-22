@@ -1,38 +1,42 @@
 #pragma once
 
-#include <vector>
 #include <algorithm>
-#include <set>
-#include <utility>
-#include <iostream>
-#include <stdint.h>
-#include <ctime>
+#include <cstddef>
+#include <cstdint>
 #include <deque>
+#include <iostream>
+#include <string>
+#include <vector>
+
+#if defined(__x86_64__) || defined(__i386__)
 #include <immintrin.h>
-#include <stdlib.h>
-#include <dlfcn.h>
+#endif
 
-#define align	__attribute__((aligned(32)))
-#define SYM		0x0000000065657266
+#if defined(__ARM_NEON) || defined(__ARM_NEON__)
+#include <arm_neon.h>
+#endif
 
-struct alignas(32) PairArray {
-    int* keys;    // Correspond à `pairs.first`
-    int* values;  // Correspond à `pairs.second`
-    size_t size;
+#if defined(__AVX2__)
+#define PMERGEME_SIMD_AVX2 1
+#else
+#define PMERGEME_SIMD_AVX2 0
+#endif
 
-    PairArray(size_t n) : size(n) {
-        keys = static_cast<int*>(aligned_alloc(32, n * sizeof(int)));
-        values = static_cast<int*>(aligned_alloc(32, n * sizeof(int)));
-    }
+#if !PMERGEME_SIMD_AVX2 && (defined(__ARM_NEON) || defined(__ARM_NEON__))
+#define PMERGEME_SIMD_NEON 1
+#else
+#define PMERGEME_SIMD_NEON 0
+#endif
 
-    ~PairArray() {
-        free(keys);
-        free(values);
-    }
-};
+#if defined(PMERGEME_MODE_FAST) && defined(PMERGEME_MODE_MINCMP)
+#error "Choose only one sort mode"
+#endif
 
+#if !defined(PMERGEME_MODE_FAST) && !defined(PMERGEME_MODE_MINCMP)
+#define PMERGEME_MODE_FAST 1
+#endif
 
-align static const uint64_t jacobsthal_table[] = {
+static const uint64_t jacobsthal_table[] = {
     0, 1, 1, 3, 5, 11, 21, 43, 85, 171, 341, 683, 1365, 2731,
     5461, 10923, 21845, 43691, 87381, 174763, 349525, 699051,
     1398101, 2796203, 5592405, 11184811, 22369621, 44739243,
@@ -46,62 +50,35 @@ align static const uint64_t jacobsthal_table[] = {
     1537228672809129301, 3074457345618258603, 6148914691236517205
 };
 
+struct PairSoA {
+    std::vector<int> lower;
+    std::vector<int> upper;
 
-struct ComparePairs 
-{
-    bool operator()(const std::pair<int, int>& a, const std::pair<int, int>& b) const 
-	{
-        return a.second < b.second;
+    PairSoA() {
     }
-} align;
 
-__attribute__((always_inline, hot))
-inline __m256i load_256(const void* ptr) {
-    if (!((uint64_t)ptr & 31)) {
-        return _mm256_load_si256((__m256i*)ptr);
-    } else {
-        return _mm256_loadu_si256((__m256i*)ptr);
+    explicit PairSoA(size_t pair_count)
+        : lower(pair_count), upper(pair_count) {
     }
-}
 
-__attribute__((always_inline, hot))
-inline void store_256(void* ptr, __m256i data) {
-    if (!((uint64_t)ptr & 31)) {
-        _mm256_store_si256((__m256i*)ptr, data);
-    } else {
-        _mm256_storeu_si256((__m256i*)ptr, data);
+    size_t size() const {
+        return lower.size();
     }
-}
 
-template <class Compare>
-__attribute__((always_inline, hot))
-inline void merge4_unrolled(
-    std::vector<std::pair<int,int> >& pairs,
-    const std::vector<std::pair<int,int> >& leftArray,
-    const std::vector<std::pair<int,int> >& rightArray,
-    int &i,
-    int &j,
-    int &k,
-    Compare compare) {
-        bool c = compare(leftArray[i], rightArray[j]);
-        pairs[k]    = c ? leftArray[i] : rightArray[j];
-        i          += c ? 1 : 0;
-        j          += c ? 0 : 1;
-        ++k;
-}
+    bool empty() const {
+        return lower.empty();
+    }
+};
 
-void* check_alignment(void* ptr, std::size_t alignment);
-bool is_aligned_32(const void* ptr);
-void calculate_jacobsthal_avx(std::vector<uint64_t>& jacobsthal, size_t start, size_t size); 
 void check_if_sorted(const std::vector<int>& arr);
-std::vector<uint64_t> generate_jacobsthal_AVX(size_t size);
-void compare_pairs_avx(std::vector<std::pair<int, int> >& pairs);
-void insertion(std::vector<int>& arr, int value);
-std::vector<int> ford_johnson_sort(std::vector<std::pair<int, int> >& pairs, int straggler, bool has_straggler) ;
-std::deque<int> ford_johnson_sort_deque(std::deque<std::pair<int, int> >& pairs, int straggler, bool has_straggler); 
-
-void insertion_deque(std::deque<int>& arr, int value);
-void compare_pairs_avx_deque(std::deque<std::pair<int, int> >& pairs);
-void calculate_jacobsthal_deque(std::deque<uint64_t>& jacobsthal, size_t start, size_t size); 
-std::deque<uint64_t> generate_jacobsthal_deque(size_t size); 
+std::vector<uint64_t> generate_jacobsthal_sequence(size_t size);
+PairSoA build_pair_soa(const std::vector<int>& values);
+PairSoA build_pair_soa(const std::deque<int>& values);
+size_t find_insertion_position(const std::vector<int>& arr, size_t size, int value);
+std::vector<int> ford_johnson_sort_soa(PairSoA pairs, int straggler, bool has_straggler);
+std::vector<int> ford_johnson_sort(const std::vector<int>& values, int straggler, bool has_straggler);
+std::deque<int> ford_johnson_sort_deque(const std::deque<int>& values, int straggler, bool has_straggler);
+void reset_comparison_count();
+uint64_t get_comparison_count();
+const char* get_sort_mode_name();
 void check_if_sorted_deque(const std::deque<int>& arr);

@@ -21,7 +21,6 @@ int main(int argc, char* argv[]) {
         unsorted_list2.push_back(std::atoi(argv[i]));
     }
 
-    // Mesurer le temps de std::sort sur std::vector
     auto start = std::chrono::high_resolution_clock::now();
     std::sort(unsorted_list.begin(), unsorted_list.end());
     auto end = std::chrono::high_resolution_clock::now();
