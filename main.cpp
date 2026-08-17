@@ -122,10 +122,10 @@ int main(int argc, char* argv[]) {
     const double vector_time = std::chrono::duration_cast<std::chrono::microseconds>(end_vector - start_vector).count();
     const double deque_time = std::chrono::duration_cast<std::chrono::microseconds>(end_deque - start_deque).count();
 
-    std::cout << "Sorted numbers: ";
-    for (size_t i = 0; i < sorted_vector.size(); ++i)
-        std::cout << sorted_vector[i] << " ";
-    std::cout << std::endl;
+    // std::cout << "Sorted numbers: ";
+    // for (size_t i = 0; i < sorted_vector.size(); ++i)
+    //     std::cout << sorted_vector[i] << " ";
+    // std::cout << std::endl;
 
     std::cout << "Time for vector sort: " << vector_time << " us" << std::endl;
     std::cout << "Time for deque sort: " << deque_time << " us" << std::endl;

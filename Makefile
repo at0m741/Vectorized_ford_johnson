@@ -2,7 +2,7 @@ NAME_BASE = PmergeMe
 NAME = $(NAME_BASE)-$(MODE)
 
 CXX = c++
-CXXFLAGS = -std=c++17 -Wall -Wextra -Werror -flto -funroll-loops
+CXXFLAGS = -std=c++17 -Wall -Wextra -Werror -flto
 MODE ?= fast
 
 UNAME_M := $(shell uname -m)
@@ -13,10 +13,15 @@ endif
 
 ifeq ($(MODE),fast)
 	CXXFLAGS += -DPMERGEME_MODE_FAST
+	CXXFLAGS += -DPMERGEME_SIMD_UNROLL=0
+else ifeq ($(MODE),fast_unroll)
+	CXXFLAGS += -DPMERGEME_MODE_FAST
+	CXXFLAGS += -DPMERGEME_SIMD_UNROLL=1
 else ifeq ($(MODE),mincmp)
 	CXXFLAGS += -DPMERGEME_MODE_MINCMP
+	CXXFLAGS += -DPMERGEME_SIMD_UNROLL=0
 else
-$(error Unsupported MODE=$(MODE). Use MODE=fast or MODE=mincmp)
+$(error Unsupported MODE=$(MODE). Use MODE=fast, fast_unroll or mincmp)
 endif
 
 SRC = main.cpp \
@@ -58,8 +63,11 @@ clean:
 	rm -rf obj
 
 fclean: clean
-	rm -f $(NAME_BASE) $(NAME_BASE)-fast $(NAME_BASE)-mincmp
+	rm -f $(NAME_BASE) \
+		$(NAME_BASE)-fast \
+		$(NAME_BASE)-fast_unroll \
+		$(NAME_BASE)-mincmp
 
 re: fclean all
 
-.PHONY: all clean fclean re
+.PHONY: all clean fclean re opti
